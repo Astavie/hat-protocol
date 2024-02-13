@@ -1,7 +1,8 @@
 export interface System {
   add<T extends Actor>(actor: T): Address<T>;
-  remove(id: string): void;
+  remove(uuid: string): void;
   send<T, K extends ActorMessage<T>>(id: Address<T>, msg: K, payload: ActorPayload<T, K>): Promise<void>;
+  onClose(host: string, callback: () => void): void;
 }
 
 export class Actor {

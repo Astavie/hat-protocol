@@ -10,6 +10,7 @@ export class Connection implements System {
   private localhost: string;
   private actors: Record<string, Actor> = {}
   private server: Deno.HttpServer;
+  private peers: Record<string, WebSocket> = {};
 
   constructor(hostname: string, publicname: string, port: number) {
     this.localhost = `${publicname}:${port}`;
@@ -46,6 +47,9 @@ export class Connection implements System {
   remove(uuid: string) {
     delete this.actors[uuid]
   }
+  onClose(host: string, callback: () => void) {
+    
+  }
 
   // Send message to actor
   async send<T, K extends ActorMessage<T>>(addr: Address<T>, msg: K, payload: ActorPayload<T, K>) {
@@ -56,20 +60,27 @@ export class Connection implements System {
       return
     }
 
-    await new Promise((resolve, reject) => {
+    if (!(addr.host in this.peers)) {
+      // connect to peer
       const socket = new WebSocket(`ws://${addr.host}`)
-      socket.addEventListener("open", () => {
-        socket.send(JSON.stringify({
-          "actor": addr,
-          "msg": msg,
-          "payload": payload,
-        } satisfies Message));
-        resolve(undefined)
+      await new Promise((resolve, reject) => {
+        socket.onopen = () => {
+          console.log("opened websocket")
+          this.peers[addr.host] = socket
+          resolve(undefined)
+        }
+        socket.onclose = () => {
+          console.log("closed websocket")
+          delete this.peers[addr.host]
+          reject()
+        }
       })
-      socket.addEventListener("error", () => {
-        console.log("could not connect")
-        reject()
-      })
-    })
+    }
+
+    this.peers[addr.host].send(JSON.stringify({
+      "actor": addr,
+      "msg": msg,
+      "payload": payload,
+    } satisfies Message));
   }
 }
