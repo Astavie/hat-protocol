@@ -12,12 +12,13 @@ class MessageLog extends Actor {
   }
   // deno-lint-ignore require-await
   async sync(_: System, msg: string[]) {
-    console.log("Remote connected")
     this.messages = msg
     this.onMessage?.()
   }
   async requestSync(ctx: System, remote: Address<MessageLog>) {
+    console.log("Remote connected")
     ctx.onClose(remote.host, () => console.log("Remote disconnected"))
+
     await ctx.send(remote, "sync", this.messages)
   }
 }
