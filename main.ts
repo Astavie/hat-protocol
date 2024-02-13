@@ -13,6 +13,18 @@ class MessageLog extends Actor {
   }
 }
 
+async function asyncPrompt(question: string): Promise<string> {
+  const text = new TextEncoder().encode(`${question} `)
+  await Deno.stdout.write(text)
+
+  const decoder = new TextDecoder();
+  for await (const chunk of Deno.stdin.readable) {
+    const text = decoder.decode(chunk);
+    return text
+  }
+  return ""
+}
+
 if (import.meta.main) {
   const hostname = await getNetworkAddr() ?? "";
   const publicname = await getIP()
@@ -40,7 +52,7 @@ if (import.meta.main) {
   }
 
   while (true) {
-    const msg = prompt("?") ?? ""
+    const msg = await asyncPrompt("?") ?? ""
     conn.send(remote, "send", msg)
   }
 }
