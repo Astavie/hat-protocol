@@ -24,5 +24,6 @@ if (import.meta.main) {
     }
     await conn.send(position, "setPose", { "transform": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, -2]] })
     await conn.send(position, "delete", null)
+    conn.onClose(position.host, () => console.log("server closed"))
   }
 }

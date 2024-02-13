@@ -6,11 +6,17 @@ type Message = {
   payload: unknown,
 }
 
+type Peer = {
+  socket: WebSocket,
+  closeCallbacks: (() => void)[],
+}
+
 export class Connection implements System {
   private localhost: string;
   private actors: Record<string, Actor> = {}
   private server: Deno.HttpServer;
-  private peers: Record<string, WebSocket> = {};
+
+  private peers: Record<string, Peer> = {};
 
   constructor(hostname: string, publicname: string, port: number) {
     this.localhost = `${publicname}:${port}`;
@@ -20,14 +26,14 @@ export class Connection implements System {
       }
 
       const { socket, response } = Deno.upgradeWebSocket(req)
-      socket.addEventListener("message", (event) => {
+      socket.onmessage = (event) => {
         const data = JSON.parse(event.data) as Message
         if (data.actor.host !== this.localhost) return
 
         // deno-lint-ignore no-explicit-any
         const actor = this.actors[data.actor.uuid] as any
         actor?.[data.msg]?.(this, data.payload)
-      })
+      }
 
       return response
     })
@@ -48,7 +54,29 @@ export class Connection implements System {
     delete this.actors[uuid]
   }
   onClose(host: string, callback: () => void) {
-    
+    if (host === this.localhost) return
+    this.connect(host).then(peer => peer.closeCallbacks.push(callback))
+  }
+
+  async connect(host: string): Promise<Peer> {
+    if (!(host in this.peers)) {
+      // connect to peer
+      const socket = new WebSocket(`ws://${host}`)
+      await new Promise((resolve, reject) => {
+        socket.onopen = () => {
+          this.peers[host] = { socket, closeCallbacks: [] }
+          resolve(undefined)
+        }
+        socket.onclose = () => {
+          for (const callback of this.peers[host]?.closeCallbacks ?? []) {
+            callback()
+          }
+          delete this.peers[host]
+          reject()
+        }
+      })
+    }
+    return this.peers[host]
   }
 
   // Send message to actor
@@ -60,24 +88,8 @@ export class Connection implements System {
       return
     }
 
-    if (!(addr.host in this.peers)) {
-      // connect to peer
-      const socket = new WebSocket(`ws://${addr.host}`)
-      await new Promise((resolve, reject) => {
-        socket.onopen = () => {
-          console.log("opened websocket")
-          this.peers[addr.host] = socket
-          resolve(undefined)
-        }
-        socket.onclose = () => {
-          console.log("closed websocket")
-          delete this.peers[addr.host]
-          reject()
-        }
-      })
-    }
-
-    this.peers[addr.host].send(JSON.stringify({
+    const peer = await this.connect(addr.host)
+    peer.socket.send(JSON.stringify({
       "actor": addr,
       "msg": msg,
       "payload": payload,
