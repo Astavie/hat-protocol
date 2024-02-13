@@ -48,7 +48,7 @@ export class Connection implements System {
   }
 
   // Send message to actor
-  async send<T, K extends ActorMessage<T>>(addr: Address<T>, msg: K, payload: ActorPayload<T>[K]) {
+  async send<T, K extends ActorMessage<T>>(addr: Address<T>, msg: K, payload: ActorPayload<T, K>) {
     if (addr.host === this.localhost) {
       // deno-lint-ignore no-explicit-any
       const actor = this.actors[addr.uuid] as any

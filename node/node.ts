@@ -15,11 +15,13 @@ export class Node extends Actor {
   constructor() {
     super()
   }
-  delete(ctx: System) {
+  // deno-lint-ignore require-await
+  async delete(ctx: System) {
     ctx.remove(this.uuid)
     console.log(`deleted`)
   }
-  setPose(_ctx: System, pose: Pose) {
+  // deno-lint-ignore require-await
+  async setPose(_: System, pose: Pose) {
     this.pose = pose
     console.log(`set pose to ${JSON.stringify(pose)}`)
   }
