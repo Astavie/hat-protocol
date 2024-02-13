@@ -25,7 +25,7 @@ export class Connection implements System {
 
         // deno-lint-ignore no-explicit-any
         const actor = this.actors[data.actor.uuid] as any
-        actor?.[data.msg](this, data.payload)
+        actor?.[data.msg]?.(this, data.payload)
       })
 
       return response
@@ -43,24 +43,24 @@ export class Connection implements System {
       uuid: actor.uuid,
     }
   }
-  remove(id: string) {
-    delete this.actors[id]
+  remove(uuid: string) {
+    delete this.actors[uuid]
   }
 
   // Send message to actor
-  async send<T, K extends ActorMessage<T>>(id: Address<T>, msg: K, payload: ActorPayload<T>[K]): Promise<void> {
-    if (id.host == this.localhost) {
+  async send<T, K extends ActorMessage<T>>(addr: Address<T>, msg: K, payload: ActorPayload<T>[K]) {
+    if (addr.host === this.localhost) {
       // deno-lint-ignore no-explicit-any
-      const actor = this.actors[id.uuid] as any
-      actor?.[msg](this, payload)
+      const actor = this.actors[addr.uuid] as any
+      actor?.[msg]?.(this, payload)
       return
     }
 
     await new Promise((resolve, reject) => {
-      const socket = new WebSocket(`ws://${id.host}`)
+      const socket = new WebSocket(`ws://${addr.host}`)
       socket.addEventListener("open", () => {
         socket.send(JSON.stringify({
-          "actor": id,
+          "actor": addr,
           "msg": msg,
           "payload": payload,
         } satisfies Message));

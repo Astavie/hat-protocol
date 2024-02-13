@@ -16,13 +16,13 @@ if (import.meta.main) {
     console.log("Server host: " + position.host);
     console.log("Node uuid: " + position.uuid);
   } else {
-    const host = prompt("Server host: ") ?? ""
-    const uuid = prompt("Node uuid: ") ?? ""
+    const host = prompt("Server host:") ?? ""
+    const uuid = prompt("Node uuid:") ?? ""
     const position: Address<Node> = {
       host,
       uuid,
     }
     await conn.send(position, "setPose", { "transform": [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, -2]] })
-    await conn.send(position, "delete", {})
+    await conn.send(position, "delete", null)
   }
 }
