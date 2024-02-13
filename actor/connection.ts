@@ -72,7 +72,7 @@ export class Connection implements System {
             callback()
           }
           delete this.peers[host]
-          reject()
+          reject(`could not connect to ${host}`)
         }
       })
     }

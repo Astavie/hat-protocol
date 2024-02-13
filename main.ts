@@ -23,7 +23,7 @@ async function asyncPrompt(question: string): Promise<string> {
   if ('done' in next && next.done) {
     return ""
   } else {
-    return new TextDecoder().decode(next.value)
+    return new TextDecoder().decode(next.value).slice(0, -1)
   }
 }
 
@@ -33,15 +33,15 @@ if (import.meta.main) {
   const conn = new Connection(hostname, publicname, 53706);
 
   const log = new MessageLog()
+  log.uuid = "log";
+
   const addr = conn.add(log)
   console.log("Server host: " + addr.host);
-  console.log("Log uuid: " + addr.uuid);
 
   const host = prompt("Remote host:") ?? "";
-  const uuid = prompt("Remote log uuid:") ?? "";
   const remote: Address<MessageLog> = {
     host,
-    uuid,
+    uuid: "log",
   }
 
   conn.onClose(remote.host, () => console.log("Remote disconnected"))
