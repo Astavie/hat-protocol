@@ -27,7 +27,6 @@ export class Connection implements System {
 
       const { socket, response } = Deno.upgradeWebSocket(req)
       socket.onmessage = (event) => {
-        console.log("MESSAGE")
         const data = JSON.parse(event.data) as Message
         if (data.actor.host !== this.localhost) return
 
@@ -59,18 +58,16 @@ export class Connection implements System {
     this.connect(host).then(peer => peer.closeCallbacks.push(callback)).catch(err => { throw err })
   }
 
-  private async connect(host: string): Promise<Peer> {
+  async connect(host: string): Promise<Peer> {
     if (!(host in this.peers)) {
       // connect to peer
       const socket = new WebSocket(`ws://${host}`)
       await new Promise((resolve, reject) => {
         socket.onopen = () => {
-          console.log("OPEN")
           this.peers[host] = { socket, closeCallbacks: [] }
           resolve(undefined)
         }
         socket.onclose = () => {
-          console.log("CLOSE")
           for (const callback of this.peers[host]?.closeCallbacks ?? []) {
             callback()
           }

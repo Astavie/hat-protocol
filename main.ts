@@ -44,10 +44,14 @@ if (import.meta.main) {
     uuid: "log",
   }
 
-  conn.onClose(remote.host, () => console.log("Remote disconnected"))
+  await conn.connect(remote.host)
   console.log("Connected!")
 
+  conn.onClose(remote.host, () => console.log("Remote disconnected"))
+
   log.onMessage = () => {
+    console.log()
+    console.log("-- LOG --")
     for (const message of log.messages) {
       console.log(message)
     }
@@ -56,5 +60,8 @@ if (import.meta.main) {
   while (true) {
     const msg = await asyncPrompt("?") ?? ""
     conn.send(remote, "send", msg)
+
+    log.messages.push(msg)
+    log.onMessage?.()
   }
 }
