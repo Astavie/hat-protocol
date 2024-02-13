@@ -58,7 +58,7 @@ export class Connection implements System {
     this.connect(host).then(peer => peer.closeCallbacks.push(callback)).catch(err => { throw err })
   }
 
-  async connect(host: string): Promise<Peer> {
+  private async connect(host: string): Promise<Peer> {
     if (!(host in this.peers)) {
       // connect to peer
       const socket = new WebSocket(`ws://${host}`)

@@ -10,6 +10,16 @@ class MessageLog extends Actor {
     this.messages.push(msg)
     this.onMessage?.()
   }
+  // deno-lint-ignore require-await
+  async sync(_: System, msg: string[]) {
+    console.log("Remote connected")
+    this.messages = msg
+    this.onMessage?.()
+  }
+  async requestSync(ctx: System, remote: Address<MessageLog>) {
+    ctx.onClose(remote.host, () => console.log("Remote disconnected"))
+    await ctx.send(remote, "sync", this.messages)
+  }
 }
 
 const stream = Deno.stdin.readable.values()
@@ -27,29 +37,13 @@ async function asyncPrompt(question: string): Promise<string> {
 }
 
 if (import.meta.main) {
-  if (!Deno.args[1] || !Deno.args[2]) {
-    console.log(`USE: ${Deno.args[0]} <local ip> <remote ip>`)
+  if (!Deno.args[0] || !Deno.args[1]) {
+    console.log(`USE: hat <local ip> <remote ip>`)
     Deno.exit()
   }
 
-  const publicname = await getIP()
-  const conn = new Connection(Deno.args[1], publicname, 53706);
-
   const log = new MessageLog()
   log.uuid = "log";
-
-  const addr = conn.add(log)
-  console.log("Server host: " + addr.host);
-
-  const remote: Address<MessageLog> = {
-    host: Deno.args[2],
-    uuid: "log",
-  }
-
-  await conn.connect(remote.host)
-  console.log("Connected!")
-
-  conn.onClose(remote.host, () => console.log("Remote disconnected"))
 
   log.onMessage = () => {
     console.log()
@@ -58,6 +52,21 @@ if (import.meta.main) {
       console.log(message)
     }
   }
+
+
+  const publicname = await getIP()
+  const conn = new Connection(Deno.args[0], publicname, 53706);
+
+  const addr = conn.add(log)
+  console.log("Server host: " + addr.host);
+
+  const remote: Address<MessageLog> = {
+    host: Deno.args[1],
+    uuid: "log",
+  }
+
+  await conn.send(remote, "requestSync", addr)
+  console.log("Connected!")
 
   while (true) {
     const msg = await asyncPrompt("?") ?? ""
