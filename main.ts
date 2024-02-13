@@ -13,16 +13,18 @@ class MessageLog extends Actor {
   }
 }
 
+const stream = Deno.stdin.readable.values()
+
 async function asyncPrompt(question: string): Promise<string> {
   const text = new TextEncoder().encode(`${question} `)
   await Deno.stdout.write(text)
 
-  const decoder = new TextDecoder();
-  for await (const chunk of Deno.stdin.readable) {
-    const text = decoder.decode(chunk);
-    return text
+  const next = await stream.next()
+  if ('done' in next && next.done) {
+    return ""
+  } else {
+    return new TextDecoder().decode(next.value)
   }
-  return ""
 }
 
 if (import.meta.main) {
