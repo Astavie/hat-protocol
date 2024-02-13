@@ -1,4 +1,4 @@
-import { Actor, System } from "../actor/types.ts";
+import { Actor, System } from "../actor/types.ts"
 
 export type Vec3 = [number, number, number]
 export type Transform = [Vec3, Vec3, Vec3, Vec3]
