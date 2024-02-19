@@ -1,4 +1,4 @@
-import { Actor, ActorPayload, ActorMessage, Address, System } from "./types.ts";
+import { Actor, ActorPayload, ActorMessage, Address, System, LocalAddress, Peer } from "./types.ts";
 
 type Message = {
   actor: Address<unknown>,
@@ -6,33 +6,38 @@ type Message = {
   payload: unknown,
 }
 
-type Peer = {
+type PeerConnection = {
+  me: Peer, // the address this remote peer knows us as
   socket: WebSocket,
   closeCallbacks: (() => void)[],
 }
 
 export class Connection implements System {
-  private localhost: string;
   private actors: Record<string, Actor> = {}
+
+  private peers: Record<Peer, PeerConnection | Promise<PeerConnection | null>> = {};
+
+  private port: number
   private server: Deno.HttpServer;
 
-  private peers: Record<string, Peer> = {};
-
-  constructor(hostname: string, publicname: string, port: number) {
-    this.localhost = `${publicname}:${port}`;
-    this.server = Deno.serve({ hostname, port }, (req) => {
+  constructor(port: number) {
+    this.port = port
+    this.server = Deno.serve({ port }, (req, info) => {
       if (req.headers.get("upgrade") !== "websocket") {
         return new Response(null, { status: 501 })
       }
 
       const { socket, response } = Deno.upgradeWebSocket(req)
+
+      // send remote back its ip
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ msg: "shake", payload: `${info.remoteAddr.hostname.replaceAll("127.0.0.1", "localhost")}` }))
+      }
+
+      // await messages
       socket.onmessage = (event) => {
         const data = JSON.parse(event.data) as Message
-        if (data.actor.host !== this.localhost) return
-
-        // deno-lint-ignore no-explicit-any
-        const actor = this.actors[data.actor.uuid] as any
-        actor?.[data.msg]?.(this, data.payload)
+        this.handleLocalMessage({ peer: undefined, uuid: data.actor.uuid }, data.msg, data.payload)
       }
 
       return response
@@ -43,56 +48,101 @@ export class Connection implements System {
     await this.server.shutdown()
   }
 
-  add<T extends Actor>(actor: T): Address<T> {
+  add<T extends Actor>(actor: T): LocalAddress<T> {
     this.actors[actor.uuid] = actor
     return {
-      host: this.localhost,
+      peer: undefined,
       uuid: actor.uuid,
     }
   }
+  async returnAddr<T>(destination: Peer, addr: LocalAddress<T> | string): Promise<Address<T> | null> {
+    const peer = await this.connect(destination);
+    if (peer === null) {
+      return null
+    }
+
+    const uuid = typeof addr === "string" ? addr : addr.uuid;
+    return {
+      peer: peer.me,
+      uuid,
+    }
+  }
+
   remove(uuid: string) {
     delete this.actors[uuid]
   }
-  onClose(host: string, callback: () => void) {
-    if (host === this.localhost) return
-    this.connect(host).then(peer => peer.closeCallbacks.push(callback)).catch(err => { throw err })
+  onClose(peer: Peer, callback: () => void) {
+    this.connect(peer).then(peer => {
+      if (peer === null) {
+        // could not connect, run callback immediately
+        callback()        
+      } else {
+        // connected! run callback on close
+        peer.closeCallbacks.push(callback)
+      }
+    })
   }
 
-  private async connect(host: string): Promise<Peer> {
-    if (!(host in this.peers)) {
+  private async connect(peer: Peer): Promise<PeerConnection | null> {
+    if (typeof peer === "number") {
+      // TODO: IPC connection
+      return null
+    }
+
+    if (!(peer in this.peers)) {
       // connect to peer
-      const socket = new WebSocket(`ws://${host}`)
-      await new Promise((resolve, reject) => {
-        socket.onopen = () => {
-          this.peers[host] = { socket, closeCallbacks: [] }
-          resolve(undefined)
+      const socket = new WebSocket(`ws://${peer}`)
+      this.peers[peer] = new Promise(resolve => {
+        const callbacks: (() => void)[] = [];
+        socket.onmessage = (ev) => {
+          console.log(`Connection with ${peer} opened.`)
+          const data = JSON.parse(ev.data);
+          if (data.msg === "shake") {
+            this.peers[peer] = {
+              socket,
+              closeCallbacks: callbacks,
+              me: `${data.payload}:${this.port}`,
+            }
+            resolve(this.peers[peer])
+          }
         }
         socket.onclose = () => {
-          for (const callback of this.peers[host]?.closeCallbacks ?? []) {
-            callback()
-          }
-          delete this.peers[host]
-          reject(`could not connect to ${host}`)
+          console.log(`Connection with ${peer} closed.`)
+          callbacks.forEach(callback => callback());
+          delete this.peers[peer]
+          resolve(null)
         }
       })
     }
-    return this.peers[host]
+
+    return await this.peers[peer]
   }
 
   // Send message to actor
-  async send<T, K extends ActorMessage<T>>(addr: Address<T>, msg: K, payload: ActorPayload<T, K>) {
-    if (addr.host === this.localhost) {
-      // deno-lint-ignore no-explicit-any
-      const actor = this.actors[addr.uuid] as any
-      actor?.[msg]?.(this, payload)
+  async send<T, K extends ActorMessage<T>>(addr: Address<T> | LocalAddress<T>, msg: K, payload: ActorPayload<T, K>) {
+    // handle local actor message
+    if (addr.peer === undefined) {
+      await this.handleLocalMessage({ peer: undefined, uuid: addr.uuid }, msg, payload)
       return
     }
 
-    const peer = await this.connect(addr.host)
-    peer.socket.send(JSON.stringify({
-      "actor": addr,
-      "msg": msg,
-      "payload": payload,
-    } satisfies Message));
+    // send message to remote actor
+    const peer = await this.connect(addr.peer)
+    if (peer !== null) {
+      peer.socket.send(JSON.stringify({
+        "actor": addr,
+        "msg": msg,
+        "payload": payload,
+      } satisfies Message));
+    }
+  }
+
+  private async handleLocalMessage(addr: LocalAddress<unknown>, msg: string, payload: unknown) {
+    // deno-lint-ignore no-explicit-any
+    const actor = this.actors[addr.uuid] as any
+    if (actor === undefined) {
+      console.error(`Actor with UUID ${addr.uuid} not found.`);
+    }
+    await actor[msg]?.(this, payload)
   }
 }
