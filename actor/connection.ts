@@ -15,7 +15,7 @@ type PeerConnection = {
 export class Connection implements System {
   private actors: Record<string, Actor> = {}
 
-  private peers: Record<Peer, PeerConnection | Promise<PeerConnection | null>> = {};
+  private peers: Record<NonNullable<Peer>, PeerConnection | Promise<PeerConnection | null>> = {};
 
   private port: number
   private server: Deno.HttpServer;
@@ -72,6 +72,7 @@ export class Connection implements System {
     delete this.actors[uuid]
   }
   onClose(peer: Peer, callback: () => void) {
+    if (peer === undefined) return
     this.connect(peer).then(peer => {
       if (peer === null) {
         // could not connect, run callback immediately
@@ -84,6 +85,8 @@ export class Connection implements System {
   }
 
   private async connect(peer: Peer): Promise<PeerConnection | null> {
+    if (peer === undefined) return null
+
     if (typeof peer === "number") {
       // TODO: IPC connection
       return null

@@ -4,7 +4,7 @@ export interface System {
 
   remove(uuid: string): void;
   send<T, K extends ActorMessage<T>>(id: Address<T> | LocalAddress<T>, msg: K, payload: ActorPayload<T, K>): Promise<void>;
-  onClose(peer: Peer, callback: () => void): void;
+  onClose(peer: Peer | undefined, callback: () => void): void;
 }
 
 export class Actor {
@@ -19,22 +19,24 @@ export type OrNull<T> = T extends NonNullable<unknown> ? T : null
 export type ActorMessage<T> = string & {[K in keyof T]-?: T[K] extends (ctx: System, payload: infer _) => Promise<void> ? K : never}[keyof T];
 export type ActorPayload<T, K extends keyof T> = T[K] extends (ctx: System, payload: infer P) => Promise<void> ? OrNull<P> : never;
 
-export type Peer = number | string; // ipc, websocket
+export type Peer = number | string | undefined; // ipc, websocket, local
 
-// Local address to actor
 export type LocalAddress<_> = {
   peer: undefined,
   uuid: string
-};
+}
 
-// Non-local address to actor
-export type Address<_> = {
-  peer: Peer,
+export type WebSocketAddress<_> = {
+  peer: string,
   uuid: string,
 }
 
-export type WebSocketAddress<T> = Address<T> & { peer: string };
-export type IPCAddress<T> = Address<T> & { peer: number };
+export type IPCAddress<_> = {
+  peer: number,
+  uuid: string,
+}
+
+export type Address<T> = LocalAddress<T> | WebSocketAddress<T> | IPCAddress<T>
 
 export function addressEq<T>(a: Address<T>, b: Address<T>): boolean {
   return a.peer === b.peer && a.uuid === b.uuid;
