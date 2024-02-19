@@ -1,4 +1,4 @@
-import { Actor, ActorPayload, ActorMessage, Address, System, LocalAddress, Peer } from "./types.ts";
+import { Actor, ActorPayload, ActorMessage, Address, System, Peer } from "./types.ts";
 
 type Message = {
   actor: Address<unknown>,
@@ -48,14 +48,19 @@ export class Connection implements System {
     await this.server.shutdown()
   }
 
-  add<T extends Actor>(actor: T): LocalAddress<T> {
+  add<T extends Actor>(actor: T): Address<T> {
     this.actors[actor.uuid] = actor
     return {
       peer: undefined,
       uuid: actor.uuid,
     }
   }
-  async returnAddr<T>(destination: Peer, addr: LocalAddress<T> | string): Promise<Address<T> | null> {
+  async returnAddr<T>(destination: Peer, addr: Address<T> | string): Promise<Address<T> | null> {
+    if (typeof addr === "object" && addr.peer !== undefined) {
+      // if this is a non-local address, we can simply return it
+      return addr
+    }
+
     const peer = await this.connect(destination);
     if (peer === null) {
       return null
@@ -73,6 +78,7 @@ export class Connection implements System {
   }
   onClose(peer: Peer, callback: () => void) {
     if (peer === undefined) return
+
     this.connect(peer).then(peer => {
       if (peer === null) {
         // could not connect, run callback immediately
@@ -122,7 +128,7 @@ export class Connection implements System {
   }
 
   // Send message to actor
-  async send<T, K extends ActorMessage<T>>(addr: Address<T> | LocalAddress<T>, msg: K, payload: ActorPayload<T, K>) {
+  async send<T, K extends ActorMessage<T>>(addr: Address<T>, msg: K, payload: ActorPayload<T, K>) {
     // handle local actor message
     if (addr.peer === undefined) {
       await this.handleLocalMessage({ peer: undefined, uuid: addr.uuid }, msg, payload)
@@ -140,7 +146,7 @@ export class Connection implements System {
     }
   }
 
-  private async handleLocalMessage(addr: LocalAddress<unknown>, msg: string, payload: unknown) {
+  private async handleLocalMessage(addr: Address<unknown>, msg: string, payload: unknown) {
     // deno-lint-ignore no-explicit-any
     const actor = this.actors[addr.uuid] as any
     if (actor === undefined) {

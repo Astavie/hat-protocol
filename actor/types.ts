@@ -1,9 +1,9 @@
 export interface System {
-  add<T extends Actor>(actor: T): LocalAddress<T>;
-  returnAddr<T>(destination: Peer, addr: LocalAddress<T> | string): Promise<Address<T> | null>;
+  add<T extends Actor>(actor: T): Address<T>;
+  returnAddr<T>(destination: Peer, addr: Address<T> | string): Promise<Address<T> | null>;
 
   remove(uuid: string): void;
-  send<T, K extends ActorMessage<T>>(id: Address<T> | LocalAddress<T>, msg: K, payload: ActorPayload<T, K>): Promise<void>;
+  send<T, K extends ActorMessage<T>>(id: Address<T>, msg: K, payload: ActorPayload<T, K>): Promise<void>;
   onClose(peer: Peer | undefined, callback: () => void): void;
 }
 
@@ -21,22 +21,10 @@ export type ActorPayload<T, K extends keyof T> = T[K] extends (ctx: System, payl
 
 export type Peer = number | string | undefined; // ipc, websocket, local
 
-export type LocalAddress<_> = {
-  peer: undefined,
-  uuid: string
-}
-
-export type WebSocketAddress<_> = {
-  peer: string,
+export type Address<_> = {
+  peer: Peer,
   uuid: string,
 }
-
-export type IPCAddress<_> = {
-  peer: number,
-  uuid: string,
-}
-
-export type Address<T> = LocalAddress<T> | WebSocketAddress<T> | IPCAddress<T>
 
 export function addressEq<T>(a: Address<T>, b: Address<T>): boolean {
   return a.peer === b.peer && a.uuid === b.uuid;
