@@ -17,11 +17,11 @@ export class System {
   add<T extends Actor>(actor: T): Address<T> {
     this.actors[actor.uuid] = actor
     actor.onAdd(this)
-    return `${this.uuid}:${actor.uuid}`
+    return this.addressOf(actor)
   }
 
   addressOf<T extends Actor>(actor: T): Address<T> {
-    return `${this.uuid}:${actor.uuid}`
+    return `${this.uuid}:${actor.uuid}` as Address<T>
   }
 
   remove(addr: Address<unknown>): void {
@@ -76,5 +76,4 @@ export type OrNull<T> = T extends NonNullable<unknown> ? T : null
 export type ActorMessage<T> = keyof T & `h_${string}`;
 export type ActorPayload<T, K extends ActorMessage<T>> = T[K] extends (ctx: System, payload: infer P) => unknown ? OrNull<P> : never;
 
-// deno-lint-ignore ban-types
-export type Address<_> = {}
+export type Address<T> = string & { readonly _: T }

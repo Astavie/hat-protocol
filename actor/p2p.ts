@@ -46,7 +46,8 @@ class WebSocketConnection implements Connection {
   }
 }
 
-export class PortalP2P<T extends Actor = Actor> extends Actor {
+type RPortalP2P = PortalP2P
+export class PortalP2P<T extends PortalP2P = RPortalP2P> extends Actor {
   private server?: Deno.HttpServer
   private publicIp: string
  
@@ -56,7 +57,7 @@ export class PortalP2P<T extends Actor = Actor> extends Actor {
     this.publicIp = publicIp
   }
 
-  onAdd(ctx: System) {
+  override onAdd(ctx: System) {
     const port = this.publicIp.split(":")[1]
     this.server = Deno.serve({ port: parseInt(port) }, req => {
       if (req.headers.get("upgrade") !== "websocket") {
@@ -76,7 +77,7 @@ export class PortalP2P<T extends Actor = Actor> extends Actor {
     })
   }
 
-  onRemove() {
+  override onRemove() {
     this.server?.shutdown()
   }
 
@@ -94,7 +95,7 @@ export class PortalP2P<T extends Actor = Actor> extends Actor {
     for (const peer of Object.keys(ctx.peers)) {
       const conn = ctx.peers[peer]
       if (conn instanceof WebSocketConnection) {
-        const addr: Address<T> = `${peer}:${this.uuid}`
+        const addr = `${peer}:${this.uuid}` as Address<T>
         tasks.push(ctx.send(addr, msg, payload))
       }
     }
@@ -126,7 +127,7 @@ export class PortalP2P<T extends Actor = Actor> extends Actor {
     for (const peer of newPeers) {
       ctx.peers[peer] = WebSocketConnection.create(ips[peer], () => {
         delete ctx.peers[peer]
-        const addr: Address<T> = `${peer}:${this.uuid}`
+        const addr = `${peer}:${this.uuid}` as Address<T>
         this.onDisconnect(ctx, addr)
       })
     }
@@ -134,9 +135,8 @@ export class PortalP2P<T extends Actor = Actor> extends Actor {
     // send response
     const peers = this.serializePeers(ctx)
     const tasks = newPeers.map(async peer => {
-      const addr: Address<PortalP2P> = `${peer}:${this.uuid}`
-      await ctx.send(addr, "h_syncPeers", peers)
-      await this.onConnect(ctx, addr)
+      await ctx.send(`${peer}:${this.uuid}` as Address<PortalP2P>, "h_syncPeers", peers)
+      await this.onConnect(ctx, `${peer}:${this.uuid}` as Address<T>)
     })
 
     await Promise.all(tasks)
