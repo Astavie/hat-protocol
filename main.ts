@@ -1,58 +1,71 @@
-import { Connection } from "./actor/connection.ts";
-import { Actor, Address, System } from "./actor/types.ts";
-import { addressEq } from "./actor/types.ts";
+import { Address, System } from "./actor/types.ts";
+import { PortalP2P } from "./actor/p2p.ts"
+import { getIP } from "https://deno.land/x/get_ip@v2.0.0/mod.ts";
 
-class MessageLog extends Actor {
-  peers: Address<MessageLog>[] = [];
-  messages: string[] = [];
-  onMessage?: (msg: string) => void;
+type ReceivePayload = {
+  addr: Address<ChatApp>,
+  name: string,
+} & ({ msg: string } | { event: "JOIN" | "LEAVE" })
 
-  // deno-lint-ignore require-await
-  async send(_: System, msg: string) {
-    this.messages.push(msg)
-    this.onMessage?.(msg)
+class ChatApp extends PortalP2P<ChatApp> {
+  name: string
+
+  messages: string[] = []
+  names: Record<string, string> = {}
+
+  constructor(publicIp: string, name: string) {
+    super("chat", publicIp)
+    this.name = name
   }
-  // deno-lint-ignore require-await
-  async sync(_: System, messages: string[]) {
-    this.messages = messages
-    for (const msg of messages) {
-      this.onMessage?.(msg)
+
+  override async onConnect(ctx: System, addr: Address<ChatApp>): Promise<void> {
+    await ctx.send(addr, "h_receive", {
+      addr: ctx.addressOf(this),
+      name: this.name,
+      event: "JOIN",
+    })
+  }
+
+  override onDisconnect(ctx: System, addr: Address<ChatApp>): Promise<void> {
+    if (addr as string in this.names) {
+      this.h_receive(ctx, {
+        addr,
+        name: this.names[addr as string],
+        event: "LEAVE",
+      })
+    }
+    return Promise.resolve()
+  }
+
+  h_receive(_: System, msg: ReceivePayload) {
+    this.names[msg.addr as string] = msg.name
+    if ("event" in msg) {
+      switch (msg.event) {
+        case "JOIN": {
+          console.log(`${msg.name} joined the chat`)
+          break
+        }
+        case "LEAVE": {
+          delete this.names[msg.addr as string]
+          console.log(`${msg.name} left the chat`)
+          break
+        }
+      }
+    } else {
+      this.messages.push(`<${msg.name}> ${msg.msg}`)
+      console.log(`<${msg.name}> ${msg.msg}`)
     }
   }
-  async connect(ctx: System, peers: Address<MessageLog>[]) {
-    // peers that will establish a new connection
-    const newPeers = peers.filter(peer => !this.peers.some(p => addressEq(p, peer)));
 
-    // peers already connected that the provided list don't include
-    const hasExtraPeers = this.peers.some(peer => !peers.some(p => addressEq(p, peer)));
+  async h_broadcast(ctx: System, msg: string) {
+    this.messages.push(`<${this.name}> ${msg}`)
+    console.log(`<${this.name}> ${msg}`)
 
-    // send reponse
-    this.peers.push(...newPeers);
-    const tasks = newPeers.map(async peer => {
-      // remove from peer list on close
-      ctx.onClose(peer.peer, () => this.peers = this.peers.filter(p => !addressEq(p, peer)))
-
-      // get return address
-      const me = await ctx.returnAddr(peer.peer, this.uuid);
-      if (me === null) return // couldn't connect to new peer
-
-      // send updated peer list back (excluding that peer, including myself)
-      await ctx.send(peer, "connect", [...this.peers.filter(p => !addressEq(p, peer)), me]);
-
-      // send our message list if we know of more peers (this must be the first connection)
-      if (hasExtraPeers) {
-        await ctx.send(peer, "sync", this.messages);
-      }
-    });
-
-    await Promise.all(tasks)
-  }
-  async broadcast(ctx: System, msg: string) {
-    this.messages.push(msg);
-    this.onMessage?.(msg);
-
-    const tasks = this.peers.map(peer => ctx.send(peer, "send", msg));
-    await Promise.all(tasks)
+    await this.broadcast(ctx, "h_receive", {
+      addr: ctx.addressOf(this),
+      name: this.name,
+      msg,
+    })
   }
 }
 
@@ -68,21 +81,11 @@ async function asyncPrompt(): Promise<string> {
 }
 
 if (import.meta.main) {
-  let port = 53706;
-  if (Deno.args[0]) {
-    port = parseInt(Deno.args[0])
-  }
+  const name = Deno.args[0] ?? "anonymous"
+  const ip = Deno.args[1] ?? `${await getIP()}:53706`
 
-  const conn = new Connection(port)
-
-  const log = new MessageLog()
-  log.uuid = "log";
-  log.peers = []
-  log.onMessage = msg => {
-    console.log(msg)
-  }
-
-  const log_addr = conn.add(log)
+  const ctx = new System()
+  const portal = ctx.add(new ChatApp(ip, name))
 
   while (true) {
     const msg = await asyncPrompt() ?? ""
@@ -98,12 +101,7 @@ if (import.meta.main) {
             continue;
           }
           console.log(`Connecting to ${cmd[1]}...`)
-          const remote: Address<MessageLog> = {
-            peer: cmd[1].replaceAll("127.0.0.1", "localhost"),
-            uuid: "log",
-          }
-          const peers = [...log.peers, remote]
-          conn.send(log_addr, "connect", peers)
+          ctx.send(portal, "h_connect", cmd[1])
           break;
         }
         default: {
@@ -112,7 +110,9 @@ if (import.meta.main) {
         }
       }
     } else {
-      conn.send(log_addr, "broadcast", ` ${port} | ${msg}`)
+      // clear line
+      await Deno.stdout.write(new TextEncoder().encode("\x1b[1A\r\x1b[K"))
+      ctx.send(portal, "h_broadcast", msg)
     }
   }
 }

@@ -12,6 +12,7 @@
     }
   },
   "redirects": {
+    "https://deno.land/x/get_ip/mod.ts": "https://deno.land/x/get_ip@v2.0.0/mod.ts",
     "https://deno.land/x/local_ip/mod.ts": "https://deno.land/x/local_ip@0.0.3/mod.ts"
   },
   "remote": {
